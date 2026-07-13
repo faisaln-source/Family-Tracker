@@ -31,7 +31,7 @@
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:16px;scroll-behavior:smooth}
+html{font-size:16px;scroll-behavior:smooth;overflow-x:hidden;max-width:100vw}
 body{
   font-family:'Inter',-apple-system,sans-serif;
   background:var(--bg-primary);
@@ -124,7 +124,7 @@ a{color:var(--accent-light);text-decoration:none;transition:var(--t)}
   display:flex;align-items:center;gap:8px;
   background:var(--bg-card);border:1px solid var(--border);
   border-radius:var(--radius-md);padding:8px 14px;
-  min-width:220px;transition:var(--t);
+  min-width:0;flex:1;max-width:300px;transition:var(--t);
 }
 .search-box:focus-within{border-color:var(--border-accent);box-shadow:0 0 0 3px var(--accent-dim)}
 .search-box input{background:none;border:none;outline:none;color:var(--text-primary);font-size:0.87rem;width:100%;font-family:'Inter',sans-serif}
@@ -350,10 +350,10 @@ textarea.form-control{resize:vertical;min-height:88px}
     left:0;padding:0 14px;
     background:rgba(10,13,26,0.95);
   }
-  .header-title{font-size:0.95rem}
-  .search-box{min-width:0;flex:1}
+  .header-title{font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .search-box{min-width:0;flex:1;max-width:none}
 
-  .main-content{margin-left:0;padding:calc(var(--header-h) + 14px) 14px 100px}
+  .main-content{margin-left:0;padding:calc(var(--header-h) + 14px) 12px 100px;width:100%;max-width:100vw}
 
   /* Bottom navigation bar for mobile */
   .app-shell::after{

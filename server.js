@@ -31,9 +31,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// 404 handler
-app.use((req, res) => {
+// ── Serve Angular PWA ───────────────────────────────────────────────────────
+const distPath = path.join(__dirname, 'frontend', 'dist', 'frontend', 'browser');
+app.use(express.static(distPath));
+
+// 404 handler for API routes only
+app.use('/api', (req, res) => {
   res.status(404).json({ success: false, error: `Route not found: ${req.method} ${req.path}` });
+});
+
+// SPA fallback — Angular handles all non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Error handler

@@ -5,8 +5,28 @@
   <base href="/">
   <title>Family Tracker</title>
   <meta name="description" content="Track your family history, ancestry and family tree across generations">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!-- PWA / Theme -->
+  <meta name="theme-color" content="#7c6cfa">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- iOS PWA (Add to Home Screen) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Family Tracker">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="assets/icons/icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="assets/icons/icon-144x144.png">
+  <link rel="apple-touch-icon" sizes="128x128" href="assets/icons/icon-128x128.png">
+  <link rel="apple-touch-icon" sizes="96x96"   href="assets/icons/icon-96x96.png">
+  <link rel="apple-touch-icon" sizes="72x72"   href="assets/icons/icon-72x72.png">
+
+  <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
@@ -14,5 +34,6 @@
 </head>
 <body>
   <app-root></app-root>
+  <noscript>Please enable JavaScript to use Family Tracker.</noscript>
 </body>
 </html>
