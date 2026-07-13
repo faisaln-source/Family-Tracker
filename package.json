@@ -9,6 +9,7 @@
     "build": "cd frontend && npm install && npm run build"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.3",
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",

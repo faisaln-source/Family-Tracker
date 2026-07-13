@@ -111,7 +111,7 @@ const createPerson = async (req, res) => {
     }
     if (!resolvedGeneration) return res.status(400).json({ success: false, error: 'generation is required' });
 
-    const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
+    const photo_url = req.photoUrl || (req.file ? `/uploads/${req.file.filename}` : null);
 
     await client.query('BEGIN');
 
@@ -163,7 +163,7 @@ const updatePerson = async (req, res) => {
       birthplace, occupation, bio, generation, is_alive
     } = req.body;
 
-    const photo_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+    const photo_url = req.photoUrl || (req.file ? `/uploads/${req.file.filename}` : undefined);
 
     const setClauses = [];
     const params = [];
