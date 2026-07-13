@@ -2,7 +2,7 @@ import { Injectable, NgZone } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, Subject } from 'rxjs';
 
-const API = 'https://marker-makers-work-unions.trycloudflare.com/api';
+const API = 'https://family-tracker-yrkm.onrender.com/api';
 
 export interface Person {
   id: number;
