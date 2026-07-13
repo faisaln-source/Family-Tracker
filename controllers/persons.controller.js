@@ -1,35 +1,36 @@
-const db = require('../db/database');
+const pool = require('../db/database');
 const { broadcastUpdate } = require('../sse');
 
 // ── GET all persons (with filters) ─────────────────────────────────────────
-const getAllPersons = (req, res) => {
+const getAllPersons = async (req, res) => {
   try {
     const { family_id, generation, gender, is_alive, q } = req.query;
 
     let query = `
       SELECT p.*,
              f.family_name, f.color AS family_color,
-             GROUP_CONCAT(DISTINCT m.person1_id || ',' || m.person2_id) AS marriages_raw
+             STRING_AGG(DISTINCT m.person1_id || ',' || m.person2_id, ',') AS marriages_raw
       FROM   persons p
       LEFT JOIN families f ON f.id = p.family_id
       LEFT JOIN marriages m ON (m.person1_id = p.id OR m.person2_id = p.id)
       WHERE 1=1
     `;
     const params = [];
+    let paramIdx = 1;
 
-    if (family_id) { query += ' AND p.family_id = ?';    params.push(family_id); }
-    if (generation) { query += ' AND p.generation = ?'; params.push(generation); }
-    if (gender)     { query += ' AND p.gender = ?';     params.push(gender); }
-    if (is_alive !== undefined) { query += ' AND p.is_alive = ?'; params.push(is_alive); }
+    if (family_id) { query += ` AND p.family_id = $${paramIdx++}`; params.push(family_id); }
+    if (generation) { query += ` AND p.generation = $${paramIdx++}`; params.push(generation); }
+    if (gender)     { query += ` AND p.gender = $${paramIdx++}`; params.push(gender); }
+    if (is_alive !== undefined) { query += ` AND p.is_alive = $${paramIdx++}`; params.push(is_alive); }
     if (q) {
-      query += ` AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.birthplace LIKE ? OR p.occupation LIKE ?)`;
-      const like = `%${q}%`;
-      params.push(like, like, like, like);
+      query += ` AND (p.first_name ILIKE $${paramIdx} OR p.last_name ILIKE $${paramIdx} OR p.birthplace ILIKE $${paramIdx} OR p.occupation ILIKE $${paramIdx})`;
+      params.push(`%${q}%`);
+      paramIdx++;
     }
 
-    query += ' GROUP BY p.id ORDER BY p.generation, p.first_name';
+    query += ' GROUP BY p.id, f.family_name, f.color ORDER BY p.generation, p.first_name';
 
-    const persons = db.prepare(query).all(...params);
+    const { rows: persons } = await pool.query(query, params);
     res.json({ success: true, data: persons, total: persons.length });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -37,51 +38,49 @@ const getAllPersons = (req, res) => {
 };
 
 // ── GET single person with full relations ───────────────────────────────────
-const getPersonById = (req, res) => {
+const getPersonById = async (req, res) => {
   try {
-    const person = db.prepare(`
+    const id = req.params.id;
+    const { rows: persons } = await pool.query(`
       SELECT p.*, f.family_name, f.color AS family_color
       FROM   persons p
       LEFT JOIN families f ON f.id = p.family_id
-      WHERE  p.id = ?
-    `).get(req.params.id);
+      WHERE  p.id = $1
+    `, [id]);
 
+    const person = persons[0];
     if (!person) return res.status(404).json({ success: false, error: 'Person not found' });
 
-    // Parents
-    const parents = db.prepare(`
+    const { rows: parents } = await pool.query(`
       SELECT p.id, p.first_name, p.last_name, p.gender, p.photo_url, p.generation
       FROM   relationships r
       JOIN   persons p ON p.id = r.parent_id
-      WHERE  r.child_id = ?
-    `).all(req.params.id);
+      WHERE  r.child_id = $1
+    `, [id]);
 
-    // Children
-    const children = db.prepare(`
+    const { rows: children } = await pool.query(`
       SELECT p.id, p.first_name, p.last_name, p.gender, p.photo_url, p.generation, p.is_alive
       FROM   relationships r
       JOIN   persons p ON p.id = r.child_id
-      WHERE  r.parent_id = ?
+      WHERE  r.parent_id = $1
       ORDER  BY p.generation, p.first_name
-    `).all(req.params.id);
+    `, [id]);
 
-    // Siblings
-    const siblings = db.prepare(`
+    const { rows: siblings } = await pool.query(`
       SELECT DISTINCT p.id, p.first_name, p.last_name, p.gender, p.photo_url, p.generation
       FROM   relationships r1
       JOIN   relationships r2 ON r2.parent_id = r1.parent_id
       JOIN   persons p ON p.id = r2.child_id
-      WHERE  r1.child_id = ? AND r2.child_id != ?
-    `).all(req.params.id, req.params.id);
+      WHERE  r1.child_id = $1 AND r2.child_id != $1
+    `, [id]);
 
-    // Spouses
-    const spouses = db.prepare(`
+    const { rows: spouses } = await pool.query(`
       SELECT p.id, p.first_name, p.last_name, p.gender, p.photo_url,
              m.married_on, m.divorced_on
       FROM   marriages m
-      JOIN   persons p ON p.id = CASE WHEN m.person1_id = ? THEN m.person2_id ELSE m.person1_id END
-      WHERE  m.person1_id = ? OR m.person2_id = ?
-    `).all(req.params.id, req.params.id, req.params.id);
+      JOIN   persons p ON p.id = CASE WHEN m.person1_id = $1 THEN m.person2_id ELSE m.person1_id END
+      WHERE  m.person1_id = $1 OR m.person2_id = $1
+    `, [id]);
 
     res.json({
       success: true,
@@ -93,7 +92,8 @@ const getPersonById = (req, res) => {
 };
 
 // ── CREATE person ───────────────────────────────────────────────────────────
-const createPerson = (req, res) => {
+const createPerson = async (req, res) => {
+  const client = await pool.connect();
   try {
     const {
       family_id, first_name, last_name, gender, dob, dod,
@@ -103,73 +103,78 @@ const createPerson = (req, res) => {
 
     if (!first_name) return res.status(400).json({ success: false, error: 'first_name is required' });
 
-    // Auto-derive generation from parent if parent_ids provided
     let resolvedGeneration = generation ? parseInt(generation) : null;
     if (parent_ids) {
       const firstParentId = Array.isArray(parent_ids) ? parent_ids[0] : parent_ids;
-      const parentRow = db.prepare('SELECT generation FROM persons WHERE id = ?').get(parseInt(firstParentId));
-      if (parentRow) resolvedGeneration = parentRow.generation + 1;
+      const { rows: parentRow } = await client.query('SELECT generation FROM persons WHERE id = $1', [firstParentId]);
+      if (parentRow.length > 0) resolvedGeneration = parentRow[0].generation + 1;
     }
-    if (!resolvedGeneration) return res.status(400).json({ success: false, error: 'generation is required (or provide parent_ids to auto-derive)' });
+    if (!resolvedGeneration) return res.status(400).json({ success: false, error: 'generation is required' });
 
-    const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
+    const photo_url = req.file ? \`/uploads/\${req.file.filename}\` : null;
 
-    const insertPerson = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO persons
-          (family_id, first_name, last_name, gender, dob, dod,
-           birthplace, occupation, bio, photo_url, generation, is_alive)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        family_id || null, first_name, last_name || null,
-        gender || 'male', dob || null, dod || null,
-        birthplace || null, occupation || null, bio || null,
-        photo_url, resolvedGeneration, is_alive !== undefined ? parseInt(is_alive) : 1
-      );
+    await client.query('BEGIN');
 
-      const personId = result.lastInsertRowid;
+    const { rows: insertedPerson } = await client.query(`
+      INSERT INTO persons
+        (family_id, first_name, last_name, gender, dob, dod,
+         birthplace, occupation, bio, photo_url, generation, is_alive)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      family_id || null, first_name, last_name || null,
+      gender || 'male', dob || null, dod || null,
+      birthplace || null, occupation || null, bio || null,
+      photo_url, resolvedGeneration, is_alive !== undefined ? parseInt(is_alive) : 1
+    ]);
 
-      // Link parents
-      if (parent_ids) {
-        const ids = Array.isArray(parent_ids) ? parent_ids : [parent_ids];
-        const insertRel = db.prepare('INSERT OR IGNORE INTO relationships (parent_id, child_id) VALUES (?, ?)');
-        ids.forEach(pid => insertRel.run(parseInt(pid), personId));
+    const personId = insertedPerson[0].id;
+
+    if (parent_ids) {
+      const ids = Array.isArray(parent_ids) ? parent_ids : [parent_ids];
+      for (const pid of ids) {
+        await client.query('INSERT INTO relationships (parent_id, child_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [pid, personId]);
       }
+    }
 
-      // Link spouse
-      if (spouse_id) {
-        const p1 = Math.min(personId, parseInt(spouse_id));
-        const p2 = Math.max(personId, parseInt(spouse_id));
-        db.prepare('INSERT OR IGNORE INTO marriages (person1_id, person2_id, married_on) VALUES (?, ?, ?)')
-          .run(p1, p2, spouse_married_on || null);
-      }
+    if (spouse_id) {
+      const p1 = Math.min(personId, parseInt(spouse_id));
+      const p2 = Math.max(personId, parseInt(spouse_id));
+      await client.query('INSERT INTO marriages (person1_id, person2_id, married_on) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [p1, p2, spouse_married_on || null]);
+    }
 
-      return personId;
-    });
+    await client.query('COMMIT');
 
-    const personId = insertPerson();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId);
     broadcastUpdate('person_created');
-    res.status(201).json({ success: true, data: person });
+    res.status(201).json({ success: true, data: insertedPerson[0] });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    client.release();
   }
 };
 
 // ── UPDATE person ───────────────────────────────────────────────────────────
-const updatePerson = (req, res) => {
+const updatePerson = async (req, res) => {
   try {
     const {
       family_id, first_name, last_name, gender, dob, dod,
       birthplace, occupation, bio, generation, is_alive
     } = req.body;
 
-    const photo_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+    const photo_url = req.file ? \`/uploads/\${req.file.filename}\` : undefined;
 
     const setClauses = [];
     const params = [];
+    let paramIdx = 1;
 
-    const set = (col, val) => { if (val !== undefined) { setClauses.push(`${col} = ?`); params.push(val); } };
+    const set = (col, val) => {
+      if (val !== undefined) {
+        setClauses.push(\`\${col} = $\${paramIdx++}\`);
+        params.push(val);
+      }
+    };
 
     set('family_id',   family_id);
     set('first_name',  first_name);
@@ -184,25 +189,29 @@ const updatePerson = (req, res) => {
     set('is_alive',    is_alive !== undefined ? parseInt(is_alive) : undefined);
     if (photo_url) set('photo_url', photo_url);
 
-    setClauses.push(`updated_at = datetime('now')`);
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+    
+    // Add ID at the end
     params.push(req.params.id);
+    const idIdx = paramIdx;
 
-    db.prepare(`UPDATE persons SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
+    const { rows: updatedPersons } = await pool.query(\`UPDATE persons SET \${setClauses.join(', ')} WHERE id = $\${idIdx} RETURNING *\`, params);
 
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) return res.status(404).json({ success: false, error: 'Person not found' });
+    if (updatedPersons.length === 0) return res.status(404).json({ success: false, error: 'Person not found' });
+    
     broadcastUpdate('person_updated');
-    res.json({ success: true, data: person });
+    res.json({ success: true, data: updatedPersons[0] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
 // ── DELETE person ───────────────────────────────────────────────────────────
-const deletePerson = (req, res) => {
+const deletePerson = async (req, res) => {
   try {
-    const result = db.prepare('DELETE FROM persons WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) return res.status(404).json({ success: false, error: 'Person not found' });
+    const { rowCount } = await pool.query('DELETE FROM persons WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ success: false, error: 'Person not found' });
+    
     broadcastUpdate('person_deleted');
     res.json({ success: true, message: 'Person deleted' });
   } catch (err) {
@@ -211,23 +220,23 @@ const deletePerson = (req, res) => {
 };
 
 // ── GET by generation ───────────────────────────────────────────────────────
-const getByGeneration = (req, res) => {
+const getByGeneration = async (req, res) => {
   try {
     const gen = parseInt(req.params.gen);
-    const persons = db.prepare(`
+    const { rows: persons } = await pool.query(`
       SELECT p.*, f.family_name, f.color AS family_color
       FROM   persons p
       LEFT JOIN families f ON f.id = p.family_id
-      WHERE  p.generation = ?
+      WHERE  p.generation = $1
       ORDER  BY f.family_name, p.first_name
-    `).all(gen);
+    `, [gen]);
 
     const stats = {
       total: persons.length,
       male: persons.filter(p => p.gender === 'male').length,
       female: persons.filter(p => p.gender === 'female').length,
-      alive: persons.filter(p => p.is_alive).length,
-      deceased: persons.filter(p => !p.is_alive).length,
+      alive: persons.filter(p => parseInt(p.is_alive) === 1).length,
+      deceased: persons.filter(p => parseInt(p.is_alive) === 0).length,
     };
 
     res.json({ success: true, generation: gen, stats, data: persons });
@@ -237,39 +246,48 @@ const getByGeneration = (req, res) => {
 };
 
 // ── Helper: cascade generation update down through all descendants ──────────
-const cascadeGenerations = (personId, newGeneration) => {
-  db.prepare("UPDATE persons SET generation = ?, updated_at = datetime('now') WHERE id = ?").run(newGeneration, personId);
-  const children = db.prepare('SELECT child_id FROM relationships WHERE parent_id = ?').all(personId);
-  children.forEach(c => cascadeGenerations(c.child_id, newGeneration + 1));
+const cascadeGenerations = async (client, personId, newGeneration) => {
+  await client.query("UPDATE persons SET generation = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", [newGeneration, personId]);
+  const { rows: children } = await client.query('SELECT child_id FROM relationships WHERE parent_id = $1', [personId]);
+  for (const c of children) {
+    await cascadeGenerations(client, c.child_id, newGeneration + 1);
+  }
 };
 
 // ── ADD parent relationship ─────────────────────────────────────────────────
-const addRelationship = (req, res) => {
+const addRelationship = async (req, res) => {
+  const client = await pool.connect();
   try {
     const { parent_id, child_id } = req.body;
 
-    const parent = db.prepare('SELECT generation FROM persons WHERE id = ?').get(parent_id);
-    if (!parent) return res.status(404).json({ success: false, error: 'Parent not found' });
+    const { rows: parentRows } = await client.query('SELECT generation FROM persons WHERE id = $1', [parent_id]);
+    if (parentRows.length === 0) return res.status(404).json({ success: false, error: 'Parent not found' });
+    const parentGen = parentRows[0].generation;
 
-    db.prepare('INSERT OR IGNORE INTO relationships (parent_id, child_id) VALUES (?, ?)').run(parent_id, child_id);
+    await client.query('BEGIN');
+    await client.query('INSERT INTO relationships (parent_id, child_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [parent_id, child_id]);
+    await cascadeGenerations(client, child_id, parentGen + 1);
+    await client.query('COMMIT');
 
-    // Auto-update child's generation and cascade to all their descendants
-    cascadeGenerations(child_id, parent.generation + 1);
-
-    res.json({ success: true, message: 'Relationship added', childGeneration: parent.generation + 1 });
+    broadcastUpdate('relationship_added');
+    res.json({ success: true, message: 'Relationship added', childGeneration: parentGen + 1 });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    client.release();
   }
 };
 
 // ── ADD marriage ────────────────────────────────────────────────────────────
-const addMarriage = (req, res) => {
+const addMarriage = async (req, res) => {
   try {
     const { person1_id, person2_id, married_on, divorced_on } = req.body;
     const p1 = Math.min(person1_id, person2_id);
     const p2 = Math.max(person1_id, person2_id);
-    db.prepare('INSERT OR IGNORE INTO marriages (person1_id, person2_id, married_on, divorced_on) VALUES (?, ?, ?, ?)')
-      .run(p1, p2, married_on || null, divorced_on || null);
+    await pool.query('INSERT INTO marriages (person1_id, person2_id, married_on, divorced_on) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [p1, p2, married_on || null, divorced_on || null]);
+    
+    broadcastUpdate('marriage_added');
     res.json({ success: true, message: 'Marriage added' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -277,23 +295,26 @@ const addMarriage = (req, res) => {
 };
 
 // ── REMOVE parent relationship ─────────────────────────────────────────────
-const removeRelationship = (req, res) => {
+const removeRelationship = async (req, res) => {
   try {
     const { parent_id, child_id } = req.body;
-    const result = db.prepare('DELETE FROM relationships WHERE parent_id = ? AND child_id = ?').run(parent_id, child_id);
-    if (result.changes === 0) return res.status(404).json({ success: false, error: 'Relationship not found' });
+    const { rowCount } = await pool.query('DELETE FROM relationships WHERE parent_id = $1 AND child_id = $2', [parent_id, child_id]);
+    if (rowCount === 0) return res.status(404).json({ success: false, error: 'Relationship not found' });
+    
     broadcastUpdate('relationship_removed');
     res.json({ success: true, message: 'Relationship removed' });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
 // ── REMOVE marriage ─────────────────────────────────────────────────────────
-const removeMarriage = (req, res) => {
+const removeMarriage = async (req, res) => {
   try {
     const { person1_id, person2_id } = req.body;
     const p1 = Math.min(person1_id, person2_id);
     const p2 = Math.max(person1_id, person2_id);
-    db.prepare('DELETE FROM marriages WHERE person1_id = ? AND person2_id = ?').run(p1, p2);
+    await pool.query('DELETE FROM marriages WHERE person1_id = $1 AND person2_id = $2', [p1, p2]);
+    
+    broadcastUpdate('marriage_removed');
     res.json({ success: true, message: 'Marriage removed' });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };

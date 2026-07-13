@@ -10,7 +10,7 @@ import { ToastService } from './core/toast.service';
   template: `
     <div class="app-shell">
       <!-- Sidebar -->
-      <aside class="sidebar">
+      <aside class="sidebar" [class.open]="sidebarOpen">
         <div class="sidebar-logo">
           <div class="logo-icon">🌳</div>
           <div>
@@ -20,28 +20,36 @@ import { ToastService } from './core/toast.service';
         </div>
         <nav class="sidebar-nav">
           <div class="nav-section-label">Overview</div>
-          <a class="nav-item" routerLink="/dashboard" routerLinkActive="active">
+          <a class="nav-item" routerLink="/dashboard" routerLinkActive="active" (click)="closeSidebar()">
             <span class="material-icons">dashboard</span> Dashboard
           </a>
 
           <div class="nav-section-label">Family Data</div>
-          <a class="nav-item" routerLink="/tree" routerLinkActive="active">
+          <a class="nav-item" routerLink="/tree" routerLinkActive="active" (click)="closeSidebar()">
             <span class="material-icons">account_tree</span> Family Tree
           </a>
-          <a class="nav-item" routerLink="/persons" routerLinkActive="active">
+          <a class="nav-item" routerLink="/persons" routerLinkActive="active" (click)="closeSidebar()">
             <span class="material-icons">people</span> All Members
           </a>
-          <a class="nav-item" routerLink="/generations" routerLinkActive="active">
+          <a class="nav-item" routerLink="/generations" routerLinkActive="active" (click)="closeSidebar()">
             <span class="material-icons">layers</span> By Generation
           </a>
-          <a class="nav-item" routerLink="/families" routerLinkActive="active">
+          <a class="nav-item" routerLink="/families" routerLinkActive="active" (click)="closeSidebar()">
             <span class="material-icons">home</span> Families
           </a>
         </nav>
       </aside>
 
+      <!-- Overlay for mobile sidebar -->
+      @if (sidebarOpen) {
+        <div class="sidebar-overlay" (click)="closeSidebar()"></div>
+      }
+
       <!-- Header -->
       <header class="top-header">
+        <button class="btn-icon mobile-menu-btn" (click)="sidebarOpen = !sidebarOpen">
+          <span class="material-icons">menu</span>
+        </button>
         <div class="header-title">Family Heritage Tracker</div>
         <div class="search-box">
           <span class="material-icons">search</span>
@@ -69,8 +77,11 @@ import { ToastService } from './core/toast.service';
   `
 })
 export class AppComponent {
+  sidebarOpen = false;
   toasts$ = this.toastService.toasts$;
   constructor(private toastService: ToastService, private router: Router) {}
+
+  closeSidebar() { this.sidebarOpen = false; }
 
   onSearch(event: any) {
     const q = event.target.value.trim();
