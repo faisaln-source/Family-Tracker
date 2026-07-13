@@ -80,6 +80,7 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
   private svg: any;
   private zoomBehavior: any;
   private currentZoom = 1;
+  private _treeBounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
 
   constructor(private api: ApiService, private router: Router, private route: ActivatedRoute) {}
 
@@ -111,7 +112,7 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
         if (!data || (Array.isArray(data) && data.length === 0)) {
           this.noData = true; return;
         }
-        setTimeout(() => this.renderTree(data), 100);
+        setTimeout(() => this.renderTree(data), 200);
       },
       error: () => { this.loading = false; this.noData = true; }
     });
@@ -310,8 +311,10 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
     });
 
     // ── Auto-fit to viewport ────────────────────────────────────────────
-    const svgW = el.clientWidth  || 800;
-    const svgH = el.clientHeight || 600;
+    // Use getBoundingClientRect — reliable even when clientWidth is 0
+    const bbox  = el.getBoundingClientRect();
+    const svgW  = bbox.width  || el.parentElement?.getBoundingClientRect().width  || 800;
+    const svgH  = bbox.height || el.parentElement?.getBoundingClientRect().height || 600;
 
     // Compute bounding box of all rendered nodes
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -323,32 +326,40 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
       if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
     });
 
+    this._treeBounds = { minX, maxX, minY, maxY };
+    this.svg = svg;
+    // Wait for browser paint so getBoundingClientRect returns real dimensions
+    requestAnimationFrame(() => requestAnimationFrame(() => this.fitToScreen()));
+  }
+
+  fitToScreen() {
+    if (!this.svg || !this._treeBounds || !this.zoomBehavior) return;
+    const el   = this.treeSvgRef?.nativeElement;
+    const bbox = el?.getBoundingClientRect();
+    const svgW = bbox?.width  || 800;
+    const svgH = bbox?.height || 600;
+
+    const { minX, maxX, minY, maxY } = this._treeBounds;
     const contentW = maxX - minX || 1;
     const contentH = maxY - minY || 1;
-    const padding  = 40;
+    const padding  = 32;
 
     const scaleX = (svgW - padding * 2) / contentW;
     const scaleY = (svgH - padding * 2) / contentH;
-    const scale  = Math.min(scaleX, scaleY, 1.2); // never scale above 1.2x
+    const scale  = Math.min(scaleX, scaleY, 1.2);
 
     const tx = (svgW - contentW * scale) / 2 - minX * scale;
     const ty = padding - minY * scale;
 
-    svg.call((this.zoomBehavior as any).transform,
-      d3.zoomIdentity.translate(tx, ty).scale(scale));
-
-    this.svg = svg;
+    this.svg.transition().duration(350).call(
+      (this.zoomBehavior as any).transform,
+      d3.zoomIdentity.translate(tx, ty).scale(scale)
+    );
   }
 
-  zoomIn()  { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 1.3); }
-  zoomOut() { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 0.75); }
-  resetZoom() {
-    const el  = this.treeSvgRef?.nativeElement;
-    const svgW = el?.clientWidth  || 800;
-    const svgH = el?.clientHeight || 600;
-    this.svg?.transition().duration(400).call((this.zoomBehavior as any).transform,
-      d3.zoomIdentity.translate(svgW / 2, 60).scale(0.85));
-  }
+  zoomIn()    { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 1.3); }
+  zoomOut()   { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 0.75); }
+  resetZoom() { this.fitToScreen(); }
 
   fixGenerations() {
     this.fixing = true;
