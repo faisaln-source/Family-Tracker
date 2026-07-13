@@ -261,7 +261,7 @@ const recalculateGenerations = async (req, res) => {
     }
     await client.query('COMMIT');
 
-    res.json({ success: true, message: \`Recalculated from \${updated} root(s)\` });
+    res.json({ success: true, message: `Recalculated from ${updated} root(s)` });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ success: false, error: err.message });
