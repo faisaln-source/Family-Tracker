@@ -41,7 +41,7 @@ app.use('/api', (req, res) => {
 });
 
 // SPA fallback — Angular handles all non-API routes
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
