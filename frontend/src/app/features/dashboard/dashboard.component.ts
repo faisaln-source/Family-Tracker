@@ -70,7 +70,7 @@ import { ApiService, Stats } from '../../core/api.service';
       </div>
 
       <!-- Generation breakdown + Family breakdown -->
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px;">
+      <div class="dash-breakdown-grid">
         <!-- Generations -->
         <div class="card">
           <h3 style="margin-bottom:18px;">By Generation</h3>
