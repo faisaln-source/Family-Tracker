@@ -107,4 +107,12 @@ export class ApiService {
   getAncestorTree(personId: number): Observable<any>         { return this.http.get<any>(`${API}/tree/ancestor/${personId}`); }
   getAncestors(personId: number): Observable<any>            { return this.http.get<any>(`${API}/tree/ancestors/${personId}`); }
   recalculateGenerations(): Observable<any>                  { return this.http.post<any>(`${API}/tree/recalculate-generations`, {}); }
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  getImageUrl(photoUrl?: string): string | null {
+    if (!photoUrl) return null;
+    if (photoUrl.startsWith('http')) return photoUrl;
+    const base = API.replace('/api', '');
+    return `${base}${photoUrl}`;
+  }
 }

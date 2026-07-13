@@ -56,7 +56,8 @@ import { RouterLink } from '@angular/router';
           <div class="person-card" [routerLink]="['/persons', p.id]">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
               @if (p.photo_url) {
-                <img [src]="'http://localhost:3000' + p.photo_url" class="person-avatar" [alt]="p.first_name">
+                <img [src]="api.getImageUrl(p.photo_url)" class="person-avatar" [alt]="p.first_name"
+                     (error)="$any($event.target).style.display='none'">
               } @else {
                 <div class="person-avatar-placeholder" [style.background]="p.family_color || '#7c6cfa'">
                   {{ p.first_name[0] }}{{ p.last_name?.[0] || '' }}
@@ -96,7 +97,7 @@ export class GenerationsComponent implements OnInit {
   genData: any = null;
   loading = false;
 
-  constructor(private api: ApiService) {}
+  constructor(public api: ApiService) {}
 
   ngOnInit() {
     this.api.getStats().subscribe(res => {

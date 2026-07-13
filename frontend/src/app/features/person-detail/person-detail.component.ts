@@ -43,9 +43,10 @@ import { PersonFormModalComponent } from '../person-form-modal/person-form-modal
         <div class="card" style="display:flex;gap:28px;align-items:flex-start;margin-bottom:22px;flex-wrap:wrap;">
           <div style="position:relative;">
             @if (person.photo_url) {
-              <img [src]="'http://localhost:3000' + person.photo_url"
+              <img [src]="api.getImageUrl(person.photo_url)"
                    style="width:110px;height:110px;border-radius:50%;object-fit:cover;border:3px solid var(--border-accent);"
-                   [alt]="person.first_name">
+                   [alt]="person.first_name"
+                   (error)="$any($event.target).style.display='none'">
             } @else {
               <div style="width:110px;height:110px;border-radius:50%;display:flex;align-items:center;
                           justify-content:center;font-size:2.5rem;font-weight:700;color:white;
@@ -324,7 +325,7 @@ export class PersonDetailComponent implements OnInit {
   private searchTimer: any;
 
   constructor(
-    private api: ApiService,
+    public api: ApiService,
     private toast: ToastService,
     private route: ActivatedRoute,
     private router: Router

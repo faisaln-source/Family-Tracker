@@ -309,15 +309,46 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
       }
     });
 
-    // Center view
+    // ── Auto-fit to viewport ────────────────────────────────────────────
+    const svgW = el.clientWidth  || 800;
+    const svgH = el.clientHeight || 600;
+
+    // Compute bounding box of all rendered nodes
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    allNodes.forEach((n: any) => {
+      const nodeRight = n.x + (n.data.spouses?.length ? NODE_W * 2 + SP_GAP : NODE_W);
+      if (n.x      < minX) minX = n.x;
+      if (nodeRight > maxX) maxX = nodeRight;
+      if (n.y      < minY) minY = n.y;
+      if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
+    });
+
+    const contentW = maxX - minX || 1;
+    const contentH = maxY - minY || 1;
+    const padding  = 40;
+
+    const scaleX = (svgW - padding * 2) / contentW;
+    const scaleY = (svgH - padding * 2) / contentH;
+    const scale  = Math.min(scaleX, scaleY, 1.2); // never scale above 1.2x
+
+    const tx = (svgW - contentW * scale) / 2 - minX * scale;
+    const ty = padding - minY * scale;
+
     svg.call((this.zoomBehavior as any).transform,
-      d3.zoomIdentity.translate(width / 2 - xOffset / 2, 60).scale(0.85));
+      d3.zoomIdentity.translate(tx, ty).scale(scale));
+
     this.svg = svg;
   }
 
-  zoomIn()    { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 1.3); }
-  zoomOut()   { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 0.75); }
-  resetZoom() { this.svg?.transition().duration(400).call((this.zoomBehavior as any).transform, d3.zoomIdentity.translate(600, 60).scale(0.85)); }
+  zoomIn()  { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 1.3); }
+  zoomOut() { this.svg?.transition().duration(300).call((this.zoomBehavior as any).scaleBy, 0.75); }
+  resetZoom() {
+    const el  = this.treeSvgRef?.nativeElement;
+    const svgW = el?.clientWidth  || 800;
+    const svgH = el?.clientHeight || 600;
+    this.svg?.transition().duration(400).call((this.zoomBehavior as any).transform,
+      d3.zoomIdentity.translate(svgW / 2, 60).scale(0.85));
+  }
 
   fixGenerations() {
     this.fixing = true;

@@ -82,7 +82,8 @@ import { PersonFormModalComponent } from '../person-form-modal/person-form-modal
 
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
             @if (p.photo_url) {
-              <img [src]="'http://localhost:3000' + p.photo_url" class="person-avatar" [alt]="p.first_name">
+              <img [src]="api.getImageUrl(p.photo_url)" class="person-avatar" [alt]="p.first_name"
+                   (error)="$any($event.target).style.display='none'">
             } @else {
               <div class="person-avatar-placeholder" [style.background]="p.family_color || '#7c6cfa'">
                 {{ p.first_name[0] }}{{ p.last_name?.[0] || '' }}
@@ -145,7 +146,7 @@ export class PersonsComponent implements OnInit {
   filters: any = { q: '', family_id: '', generation: '', gender: '', is_alive: '' };
 
   constructor(
-    private api: ApiService,
+    public api: ApiService,
     private toast: ToastService,
     private route: ActivatedRoute,
     private router: Router
