@@ -92,7 +92,7 @@ import { ApiService, Person, Family } from '../../core/api.service';
                   <span class="material-icons" style="font-size:13px;">person</span>
                   {{ p.first_name }} {{ p.last_name || '' }}
                   <span class="gen-badge">Gen {{ p.generation }}</span>
-                  <button type="button" (click)="removeParent(p)"
+                  <button type="button" (click)="toggleParent(p)"
                     style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;line-height:1;padding:0 0 0 4px;">×</button>
                 </span>
               }
@@ -105,7 +105,7 @@ import { ApiService, Person, Family } from '../../core/api.service';
             @if (activeDD==='parent' && ddResults.length) {
               <div class="search-dd">
                 @for (p of ddResults; track p.id) {
-                  <div class="search-item" (mousedown)="selectParent(p)">
+                  <div class="search-item" (mousedown)="toggleParent(p);parentSearch='';activeDD=null">
                     <span>{{ p.first_name }} {{ p.last_name || '' }}</span>
                     <span class="gen-badge">Gen {{ p.generation }} → child Gen {{ p.generation + 1 }}</span>
                   </div>
