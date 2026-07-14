@@ -217,7 +217,7 @@ import { PersonFormModalComponent } from '../person-form-modal/person-form-modal
             </h3>
             @for (s of person.siblings; track s.id) {
               <div class="person-mini">
-                <span style="flex:1;">{{ fullName(s) }}</span>
+                <span (click)="goTo(s.id)" style="cursor:pointer;flex:1;">{{ fullName(s) }}</span>
                 <div style="display:flex;gap:12px;align-items:center;">
                   <button class="btn btn-icon" style="padding:4px;" title="View details" (click)="openQuickView(s.id)">
                     <span class="material-icons" style="font-size:16px;color:var(--accent-light);">open_in_new</span>

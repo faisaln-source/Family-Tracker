@@ -187,7 +187,7 @@ import { ApiService, Person, Family } from '../../core/api.service';
                 <div class="person-chips">
                   @for (p of parentPool; track p.id) {
                     <span class="person-chip" [class.selected-parent]="hasIn(selectedParents,p.id)"
-                          (click)="togglePerson(selectedParents, p)">
+                          (click)="toggleParent(p)">
                       <span class="material-icons" style="font-size:13px;">{{ hasIn(selectedParents,p.id)?'check':'add' }}</span>
                       {{ p.first_name }} {{ p.last_name || '' }}
                     </span>
@@ -202,7 +202,7 @@ import { ApiService, Person, Family } from '../../core/api.service';
                 @if (activeDD==='parent' && ddResults.length) {
                   <div class="search-dd">
                     @for (p of ddResults; track p.id) {
-                      <div class="search-item" (mousedown)="togglePerson(selectedParents,p);parentSearch='';activeDD=null">
+                      <div class="search-item" (mousedown)="toggleParent(p);parentSearch='';activeDD=null">
                         {{ p.first_name }} {{ p.last_name }} <span class="gen-badge">Gen {{ p.generation }}</span>
                       </div>
                     }
@@ -437,26 +437,47 @@ export class PersonFormModalComponent implements OnInit, OnChanges {
   }
 
   // ── Parent picker methods ─────────────────────────────────────────────
-  selectParent(p: Person) {
-    if (!this.hasIn(this.selectedParents, p.id)) this.selectedParents.push(p);
-    this.parentSearch = ''; this.activeDD = null; this.ddResults = [];
-    // Auto-set generation from the HIGHEST parent gen
-    const maxParentGen = Math.max(...this.selectedParents.map(x => x.generation));
-    this.form.patchValue({ generation: maxParentGen + 1 });
-    this.genAutoSet = true;
+  toggleParent(p: Person) {
+    const idx = this.selectedParents.findIndex(x => x.id === p.id);
+    if (idx === -1) {
+      this.selectedParents.push(p);
+      
+      // Auto-add spouses!
+      if (p.marriages_raw) {
+        const marriedIds = p.marriages_raw.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id !== p.id);
+        marriedIds.forEach(spId => {
+          if (!this.hasIn(this.selectedParents, spId)) {
+            const sp = this.parentPool.find(x => x.id === spId) || this.ddResults.find(x => x.id === spId);
+            if (sp) {
+              this.selectedParents.push(sp);
+            } else {
+              this.api.getPerson(spId).subscribe(res => {
+                if (res.data && !this.hasIn(this.selectedParents, spId)) {
+                  this.selectedParents.push(res.data);
+                  this.syncParentIds();
+                  this.updateParentGen(this.selectedParents);
+                }
+              });
+            }
+          }
+        });
+      }
+    } else {
+      this.selectedParents.splice(idx, 1);
+    }
+    
     this.syncParentIds();
-    this.loadGenPools(maxParentGen + 1);
+    this.updateParentGen(this.selectedParents);
   }
 
-  removeParent(p: Person) {
-    this.selectedParents = this.selectedParents.filter(x => x.id !== p.id);
-    this.syncParentIds();
-    if (this.selectedParents.length === 0) {
+  private updateParentGen(parents: Person[]) {
+    if (parents.length === 0) {
       this.genAutoSet = false;
     } else {
-      const maxParentGen = Math.max(...this.selectedParents.map(x => x.generation));
+      const maxParentGen = Math.max(...parents.map(x => x.generation));
       this.form.patchValue({ generation: maxParentGen + 1 });
       this.loadGenPools(maxParentGen + 1);
+      this.genAutoSet = true;
     }
   }
 

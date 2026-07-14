@@ -17,11 +17,16 @@ import * as d3 from 'd3';
         <p>Interactive visualization of your family lineage</p>
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
-        <select class="form-control" style="width:200px;" [(ngModel)]="selectedFamilyId" (change)="loadTree()">
+        <select class="form-control" style="width:200px;" [(ngModel)]="selectedFamilyId" (change)="onFamilyChange()">
           <option [value]="0" disabled>Select a Family</option>
           @for (f of families; track f.id) {
             <option [value]="f.id">{{ f.family_name }}</option>
           }
+        </select>
+        <select class="form-control" style="width:160px;" [(ngModel)]="maxDepth" (change)="renderTree()">
+          <option [value]="2">2 Generations</option>
+          <option [value]="3">3 Generations</option>
+          <option [value]="99">All Generations</option>
         </select>
         <button class="btn btn-secondary" (click)="fixGenerations()" [disabled]="fixing"
                 title="Recalculate all generation numbers based on parent-child relationships">
@@ -30,6 +35,15 @@ import * as d3 from 'd3';
         </button>
       </div>
     </div>
+
+    @if (currentRootId) {
+      <div style="padding: 12px 24px; background: rgba(124, 108, 250, 0.1); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-accent); margin-bottom: 10px;">
+        <span>Currently viewing sub-tree for: <strong style="color: var(--accent-light);">{{ currentRootName }}</strong></span>
+        <button class="btn btn-secondary btn-sm" (click)="resetDrillDown()">
+          <span class="material-icons" style="font-size:16px;">arrow_upward</span> Back to Main Family
+        </button>
+      </div>
+    }
 
     @if (loading) {
       <div class="loading-spinner"><div class="spinner"></div><span>Building tree...</span></div>
@@ -79,6 +93,10 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
 
   families: Family[] = [];
   selectedFamilyId = 0;
+  maxDepth = 2;
+  currentRootId: number | null = null;
+  currentRootName: string = '';
+  rawTreeData: any[] = [];
   loading = true;
   noData = false;
   fixing = false;
@@ -105,8 +123,20 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
 
   ngAfterViewInit() {}
 
+  onFamilyChange() {
+    this.currentRootId = null;
+    this.currentRootName = '';
+    this.loadTree();
+  }
+
+  resetDrillDown() {
+    this.currentRootId = null;
+    this.currentRootName = '';
+    this.loadTree();
+  }
+
   loadTree() {
-    if (!this.selectedFamilyId) {
+    if (!this.selectedFamilyId && !this.currentRootId) {
       this.loading = false;
       this.noData = false;
       if (this.svg) this.svg.selectAll('*').remove();
@@ -114,24 +144,29 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
     }
     this.loading = true;
     this.noData = false;
-    const obs = this.api.getFamilyTree(+this.selectedFamilyId);
+    const obs = this.currentRootId 
+      ? this.api.getAncestorTree(this.currentRootId) 
+      : this.api.getFamilyTree(+this.selectedFamilyId);
 
     obs.subscribe({
       next: (res) => {
         this.loading = false;
-        const data = this.selectedFamilyId ? res.data : res.data;
+        const data = res.data;
         if (!data || (Array.isArray(data) && data.length === 0)) {
-          this.noData = true; return;
+           this.noData = true;
+           if (this.svg) this.svg.selectAll('*').remove();
+           return;
         }
-        setTimeout(() => this.renderTree(data), 200);
+        this.rawTreeData = data;
+        setTimeout(() => this.renderTree(), 100);
       },
       error: () => { this.loading = false; this.noData = true; }
     });
   }
 
-  private renderTree(data: any) {
+  renderTree() {
     const el = this.treeSvgRef?.nativeElement;
-    if (!el) return;
+    if (!el || !this.rawTreeData) return;
 
     // Clear previous
     d3.select(el).selectAll('*').remove();
@@ -140,19 +175,41 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
     const NODE_W = 150, NODE_H = 60;
     const SP_GAP = 16;   // gap between the two spouse cards
     const H_GAP  = 60;   // horizontal breathing room between couples/nodes
-    const V_GAP  = 110;  // vertical gap between generations
+    const V_GAP  = 130;  // vertical gap between generations (increased for buttons)
+
+    // Deep clone rawTreeData to avoid modifying the original when changing depth
+    const clonedData = JSON.parse(JSON.stringify(this.rawTreeData));
 
     // Flatten roots
     let rawRoots: any[] = [];
-    if (Array.isArray(data) && data[0]?.trees) {
-      data.forEach((fam: any) => rawRoots.push(...(fam.trees || [])));
-    } else if (Array.isArray(data)) {
-      rawRoots = data;
+    if (Array.isArray(clonedData) && clonedData[0]?.trees) {
+      clonedData.forEach((fam: any) => rawRoots.push(...(fam.trees || [])));
+    } else if (Array.isArray(clonedData)) {
+      rawRoots = clonedData;
     } else {
-      rawRoots = [data];
+      rawRoots = [clonedData];
     }
 
     if (rawRoots.length === 0) { this.noData = true; return; }
+
+    // Prune based on maxDepth (root is depth 0, children depth 1, etc.)
+    const maxDepthLimit = +this.maxDepth - 1; 
+
+    const pruneNode = (node: any, currentDepth: number) => {
+      if (!node) return;
+      if (currentDepth >= maxDepthLimit) {
+        if (node.children && node.children.length > 0) {
+          node.hasHiddenChildren = true;
+          node.children = [];
+        }
+      } else {
+        if (node.children) {
+          node.children.forEach((c: any) => pruneNode(c, currentDepth + 1));
+        }
+      }
+    };
+
+    rawRoots.forEach((r: any) => pruneNode(r, 0));
 
     // Frontend Deduplication (in case backend returns a couple as two separate roots)
     // Gather all spouse IDs from all roots
@@ -389,6 +446,36 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
           viewLabel.on('mouseenter', () => { viewLabel.attr('text-decoration', 'underline'); });
           viewLabel.on('mouseleave', () => { viewLabel.attr('text-decoration', 'none'); });
         }
+      }
+
+      // Add "View Family" button if children were pruned
+      if (p.hasHiddenChildren) {
+        // Center button relative to the node (or couple)
+        const centerOffset = p.spouses && p.spouses.length > 0 ? NODE_W + SP_GAP / 2 : NODE_W / 2;
+        const btnG = grp.append('g')
+          .attr('transform', `translate(${centerOffset}, ${NODE_H + 12})`)
+          .style('cursor', 'pointer')
+          .on('click', (event: MouseEvent) => {
+            event.stopPropagation();
+            self.currentRootId = p.id;
+            self.currentRootName = `${p.first_name} ${p.last_name || ''}`.trim();
+            self.loadTree();
+          });
+
+        // Pill background
+        btnG.append('rect')
+          .attr('x', -45).attr('y', 0).attr('width', 90).attr('height', 20).attr('rx', 10)
+          .attr('fill', '#2d3345').attr('stroke', col).attr('stroke-width', 1);
+
+        // Text
+        btnG.append('text')
+          .attr('x', 0).attr('y', 10)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+          .attr('fill', col).attr('font-size', '10px').attr('font-family', 'Inter, sans-serif').attr('font-weight', '600')
+          .text('View Family ↧');
+
+        btnG.on('mouseenter', function() { d3.select(this).select('rect').attr('fill', '#394055'); })
+            .on('mouseleave', function() { d3.select(this).select('rect').attr('fill', '#2d3345'); });
       }
     });
 
