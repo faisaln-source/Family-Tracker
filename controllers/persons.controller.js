@@ -18,8 +18,11 @@ const getAllPersons = async (req, res) => {
     const params = [];
     let paramIdx = 1;
 
-    if (family_id) { query += ` AND p.family_id = $${paramIdx++}`; params.push(family_id); }
-    if (generation) { query += ` AND p.generation = $${paramIdx++}`; params.push(generation); }
+    if (family_id) { query += ` AND p.family_id = $${paramIdx++}`; params.push(parseInt(family_id)); }
+    if (generation) {
+      const genInt = parseInt(generation);
+      if (!isNaN(genInt)) { query += ` AND p.generation = $${paramIdx++}`; params.push(genInt); }
+    }
     if (gender)     { query += ` AND p.gender = $${paramIdx++}`; params.push(gender); }
     if (is_alive !== undefined) { query += ` AND p.is_alive = $${paramIdx++}`; params.push(is_alive); }
     if (q) {
@@ -98,15 +101,20 @@ const createPerson = async (req, res) => {
     const {
       family_id, first_name, last_name, gender, dob, dod,
       birthplace, occupation, bio, generation, is_alive,
-      parent_ids, spouse_id, spouse_married_on
+      parent_ids, spouse_id, spouse_married_on, phone
     } = req.body;
 
     if (!first_name) return res.status(400).json({ success: false, error: 'first_name is required' });
 
+    // Parse parent_ids: may be a comma-separated string like "2,1" or a single value
+    const parsedParentIds = parent_ids
+      ? (Array.isArray(parent_ids) ? parent_ids : String(parent_ids).split(','))
+          .map(id => parseInt(String(id).trim())).filter(id => !isNaN(id))
+      : [];
+
     let resolvedGeneration = generation ? parseInt(generation) : null;
-    if (parent_ids) {
-      const firstParentId = Array.isArray(parent_ids) ? parent_ids[0] : parent_ids;
-      const { rows: parentRow } = await client.query('SELECT generation FROM persons WHERE id = $1', [firstParentId]);
+    if (parsedParentIds.length > 0) {
+      const { rows: parentRow } = await client.query('SELECT generation FROM persons WHERE id = $1', [parsedParentIds[0]]);
       if (parentRow.length > 0) resolvedGeneration = parentRow[0].generation + 1;
     }
     if (!resolvedGeneration) return res.status(400).json({ success: false, error: 'generation is required' });
@@ -118,23 +126,21 @@ const createPerson = async (req, res) => {
     const { rows: insertedPerson } = await client.query(`
       INSERT INTO persons
         (family_id, first_name, last_name, gender, dob, dod,
-         birthplace, occupation, bio, photo_url, generation, is_alive)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         birthplace, occupation, bio, photo_url, generation, is_alive, phone)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
       family_id || null, first_name, last_name || null,
       gender || 'male', dob || null, dod || null,
       birthplace || null, occupation || null, bio || null,
-      photo_url, resolvedGeneration, is_alive !== undefined ? parseInt(is_alive) : 1
+      photo_url, resolvedGeneration, is_alive !== undefined ? parseInt(is_alive) : 1,
+      phone || null
     ]);
 
     const personId = insertedPerson[0].id;
 
-    if (parent_ids) {
-      const ids = Array.isArray(parent_ids) ? parent_ids : [parent_ids];
-      for (const pid of ids) {
-        await client.query('INSERT INTO relationships (parent_id, child_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [pid, personId]);
-      }
+    for (const pid of parsedParentIds) {
+      await client.query('INSERT INTO relationships (parent_id, child_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [pid, personId]);
     }
 
     if (spouse_id) {
@@ -158,9 +164,10 @@ const createPerson = async (req, res) => {
 // ── UPDATE person ───────────────────────────────────────────────────────────
 const updatePerson = async (req, res) => {
   try {
+    console.log('updatePerson req.body:', req.body);
     const {
       family_id, first_name, last_name, gender, dob, dod,
-      birthplace, occupation, bio, generation, is_alive
+      birthplace, occupation, bio, generation, is_alive, phone
     } = req.body;
 
     const photo_url = req.photoUrl || (req.file ? `/uploads/${req.file.filename}` : undefined);
@@ -185,20 +192,20 @@ const updatePerson = async (req, res) => {
     set('birthplace',  birthplace);
     set('occupation',  occupation);
     set('bio',         bio);
+    set('phone',       phone);
     set('generation',  generation ? parseInt(generation) : undefined);
     set('is_alive',    is_alive !== undefined ? parseInt(is_alive) : undefined);
     if (photo_url) set('photo_url', photo_url);
 
     setClauses.push('updated_at = CURRENT_TIMESTAMP');
-    
-    // Add ID at the end
+
     params.push(req.params.id);
     const idIdx = paramIdx;
 
     const { rows: updatedPersons } = await pool.query(`UPDATE persons SET ${setClauses.join(', ')} WHERE id = $${idIdx} RETURNING *`, params);
 
     if (updatedPersons.length === 0) return res.status(404).json({ success: false, error: 'Person not found' });
-    
+
     broadcastUpdate('person_updated');
     res.json({ success: true, data: updatedPersons[0] });
   } catch (err) {

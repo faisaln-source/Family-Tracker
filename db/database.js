@@ -16,8 +16,11 @@ const initDB = async () => {
         origin      TEXT,
         description TEXT,
         color       TEXT DEFAULT '#4f46e5',
+        image_url   TEXT,
         created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE families ADD COLUMN IF NOT EXISTS image_url TEXT;
 
       CREATE TABLE IF NOT EXISTS persons (
         id          SERIAL PRIMARY KEY,
@@ -36,6 +39,8 @@ const initDB = async () => {
         created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE persons ADD COLUMN IF NOT EXISTS phone TEXT;
 
       CREATE TABLE IF NOT EXISTS relationships (
         id        SERIAL PRIMARY KEY,

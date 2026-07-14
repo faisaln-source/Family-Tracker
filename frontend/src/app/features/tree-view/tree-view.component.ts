@@ -132,14 +132,78 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
     const V_GAP  = 110;  // vertical gap between generations
 
     // Flatten roots
-    let roots: any[] = [];
+    let rawRoots: any[] = [];
     if (Array.isArray(data) && data[0]?.trees) {
-      data.forEach((fam: any) => roots.push(...(fam.trees || [])));
+      data.forEach((fam: any) => rawRoots.push(...(fam.trees || [])));
     } else if (Array.isArray(data)) {
-      roots = data;
+      rawRoots = data;
     } else {
-      roots = [data];
+      rawRoots = [data];
     }
+
+    if (rawRoots.length === 0) { this.noData = true; return; }
+
+    // Frontend Deduplication (in case backend returns a couple as two separate roots)
+    // Gather all spouse IDs from all roots
+    const spouseIds = new Set<number>();
+    rawRoots.forEach(r => {
+      if (r.spouses) {
+        r.spouses.forEach((s: any) => spouseIds.add(s.id));
+      }
+    });
+
+    // A root is redundant if it is already rendered as a spouse of another root ANYWHERE in the tree
+    // To ensure consistency, we keep the one that has children attached, or the smaller ID.
+    rawRoots.sort((a, b) => {
+      const aC = a.children?.length || 0;
+      const bC = b.children?.length || 0;
+      return bC - aC; // Descending order of children count
+    });
+
+    const roots = [];
+    const seenRoots = new Set<number>();
+    
+    // Helper to extract all spouse IDs recursively from a tree node
+    const getAllSpouseIds = (node: any, set: Set<number>) => {
+      if (!node) return;
+      if (node.spouses) {
+        node.spouses.forEach((s: any) => set.add(s.id));
+      }
+      if (node.children) {
+        node.children.forEach((c: any) => getAllSpouseIds(c, set));
+      }
+    };
+
+    for (const r of rawRoots) {
+      if (seenRoots.has(r.id)) continue;
+      
+      let isSpouseOfKeptRoot = false;
+      for (const kept of roots) {
+        const keptSpouses = new Set<number>();
+        getAllSpouseIds(kept, keptSpouses);
+        if (keptSpouses.has(r.id)) {
+          isSpouseOfKeptRoot = true;
+          // Merge children from this redundant root into the kept root to prevent lost children
+          if (r.children && r.children.length > 0) {
+            if (!kept.children) kept.children = [];
+            // Only add children that are not already present
+            const existingChildIds = new Set(kept.children.map((c: any) => c.id));
+            r.children.forEach((child: any) => {
+              if (!existingChildIds.has(child.id)) {
+                kept.children.push(child);
+              }
+            });
+          }
+          break;
+        }
+      }
+
+      if (!isSpouseOfKeptRoot) {
+        roots.push(r);
+        seenRoots.add(r.id);
+      }
+    }
+
     if (roots.length === 0) { this.noData = true; return; }
 
     const hierarchies = roots.map(r => d3.hierarchy(r, (d: any) => d.children?.length ? d.children : null));
@@ -258,8 +322,14 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
       const col = p.family_color || '#7c6cfa';
       const grp = d3.select(this);
 
+      // Determine role label for main card
+      let roleLabel = '';
+      if (d.depth > 0) {
+        roleLabel = p.gender === 'female' ? ' · Daughter' : (p.gender === 'male' ? ' · Son' : ' · Child');
+      }
+
       // Main person card (always at x=0)
-      drawCard(grp, 0, p, col, `Gen ${p.generation} · ${p.is_alive ? '🟢' : '⚫'}`);
+      drawCard(grp, 0, p, col, `Gen ${p.generation}${roleLabel} · ${p.is_alive ? '🟢' : '⚫'}`);
 
       // Spouse card side-by-side
       if (p.spouses && p.spouses.length > 0) {
@@ -281,9 +351,10 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
           .attr('stroke', isDiffFamily ? spCol : col)
           .attr('stroke-width', 2);
 
+        const spRole = sp.gender === 'female' ? ' · Wife' : (sp.gender === 'male' ? ' · Husband' : ' · Spouse');
         const spGen = sp.generation
-          ? `Gen ${sp.generation} · ${sp.is_alive ? '🟢' : '⚫'}`
-          : `Gen ${p.generation}`;
+          ? `Gen ${sp.generation}${spRole} · ${sp.is_alive ? '🟢' : '⚫'}`
+          : `Gen ${p.generation}${spRole}`;
         const cardG = drawCard(grp, NODE_W + SP_GAP, sp, spCol, spGen);
 
         // If from a different family, add a clickable small italic family label below the card
