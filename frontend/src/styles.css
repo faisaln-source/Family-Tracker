@@ -328,8 +328,10 @@ textarea.form-control{resize:vertical;min-height:88px}
 @media (max-width: 768px) {
   :root{
     --sidebar-w:0px;
-    --safe-top: max(env(safe-area-inset-top), 40px);
-    --safe-bottom: max(env(safe-area-inset-bottom), 16px);
+    --safe-top: 40px;
+    --safe-top: max(env(safe-area-inset-top, 0px), 40px);
+    --safe-bottom: 16px;
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
   }
 
   .mobile-menu-btn{
