@@ -223,11 +223,13 @@ import { ApiService, Person, Family } from '../../core/api.service';
             @else {
               <div class="person-chips">
                 @for (p of sameGenPool; track p.id) {
-                  <span class="person-chip" [class.selected-spouse]="hasIn(selectedSpouses,p.id)"
-                        (click)="togglePerson(selectedSpouses, p)">
-                    <span class="material-icons" style="font-size:13px;">{{ hasIn(selectedSpouses,p.id)?'check':'add' }}</span>
-                    {{ p.first_name }} {{ p.last_name || '' }}
-                  </span>
+                  @if (!hasIn(selectedSiblings, p.id)) {
+                    <span class="person-chip" [class.selected-spouse]="hasIn(selectedSpouses,p.id)"
+                          (click)="togglePerson(selectedSpouses, p)">
+                      <span class="material-icons" style="font-size:13px;">{{ hasIn(selectedSpouses,p.id)?'check':'add' }}</span>
+                      {{ p.first_name }} {{ p.last_name || '' }}
+                    </span>
+                  }
                 }
               </div>
             }
@@ -348,6 +350,8 @@ export class PersonFormModalComponent implements OnInit, OnChanges {
 
   get currentGen(): number { return +this.form.get('generation')?.value || 0; }
   get lockedFamilyName(): string { return this.families.find(f => f.id === this.lockedFamilyId)?.family_name || ''; }
+  get availableSpouses(): Person[] { return this.sameGenPool.filter(p => !this.hasIn(this.selectedSiblings, p.id)); }
+  get availableSiblings(): Person[] { return this.sameGenPool.filter(p => !this.hasIn(this.selectedSpouses, p.id)); }
 
   constructor(private fb: FormBuilder, private api: ApiService) {
     this.form = this.fb.group({
