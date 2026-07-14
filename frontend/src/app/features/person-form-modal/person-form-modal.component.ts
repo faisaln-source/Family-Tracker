@@ -350,8 +350,18 @@ export class PersonFormModalComponent implements OnInit, OnChanges {
 
   get currentGen(): number { return +this.form.get('generation')?.value || 0; }
   get lockedFamilyName(): string { return this.families.find(f => f.id === this.lockedFamilyId)?.family_name || ''; }
-  get availableSpouses(): Person[] { return this.sameGenPool.filter(p => !this.hasIn(this.selectedSiblings, p.id)); }
+  get availableSpouses(): Person[] { return this.sameGenPool.filter(p => !this.hasIn(this.selectedSiblings, p.id) && !this.isMarriedToSomeoneElse(p)); }
   get availableSiblings(): Person[] { return this.sameGenPool.filter(p => !this.hasIn(this.selectedSpouses, p.id)); }
+
+  isMarriedToSomeoneElse(p: Person): boolean {
+    if (!p.marriages_raw) return false;
+    if (this.person?.id) {
+      const marriedIds = p.marriages_raw.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      const otherSpouseIds = marriedIds.filter(id => id !== this.person!.id && id !== p.id);
+      return otherSpouseIds.length > 0;
+    }
+    return true;
+  }
 
   constructor(private fb: FormBuilder, private api: ApiService) {
     this.form = this.fb.group({
@@ -395,6 +405,7 @@ export class PersonFormModalComponent implements OnInit, OnChanges {
         this.selectedParents  = p.parents  ? [...p.parents]  : [];
         this.selectedSpouses  = p.spouses  ? [...p.spouses]  : [];
         this.selectedChildren = p.children ? [...p.children] : [];
+        this.selectedSiblings = p.siblings ? [...p.siblings] : [];
         this.originalSpouses  = [...this.selectedSpouses];
         this.originalChildren = [...this.selectedChildren];
         if (String(p.is_alive) === '1') this.form.get('dod')?.disable();
@@ -510,7 +521,11 @@ export class PersonFormModalComponent implements OnInit, OnChanges {
     if (fid) f.family_id = fid;
     this.searchTimer = setTimeout(() => {
       this.api.getPersons(f).subscribe(r => {
-        this.ddResults = r.data.filter((p: Person) => p.id !== this.person?.id);
+        let results = r.data.filter((p: Person) => p.id !== this.person?.id);
+        if (type === 'spouse') {
+          results = results.filter((p: Person) => !this.hasIn(this.selectedSiblings, p.id) && !this.isMarriedToSomeoneElse(p));
+        }
+        this.ddResults = results;
       });
     }, 300);
   }

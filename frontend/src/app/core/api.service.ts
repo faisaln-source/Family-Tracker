@@ -16,6 +16,7 @@ export interface Person {
   occupation?: string;
   bio?: string;
   photo_url?: string;
+  phone?: string;
   generation: number;
   is_alive: number;
   family_name?: string;
@@ -24,6 +25,7 @@ export interface Person {
   children?: Person[];
   siblings?: Person[];
   spouses?: any[];
+  marriages_raw?: string;
 }
 
 export interface Family {
@@ -32,6 +34,7 @@ export interface Family {
   origin?: string;
   description?: string;
   color: string;
+  image_url?: string;
   member_count?: number;
   members?: Person[];
 }
@@ -80,9 +83,9 @@ export class ApiService {
   // ── Families ──────────────────────────────────────────────────────────
   getFamilies(): Observable<{ data: Family[] }>         { return this.http.get<any>(`${API}/families`); }
   getFamily(id: number): Observable<{ data: Family }>   { return this.http.get<any>(`${API}/families/${id}`); }
-  createFamily(body: any): Observable<{ data: Family }> { return this.http.post<any>(`${API}/families`, body); }
-  updateFamily(id: number, body: any)                   { return this.http.put<any>(`${API}/families/${id}`, body); }
-  deleteFamily(id: number)                              { return this.http.delete<any>(`${API}/families/${id}`); }
+  createFamily(formData: FormData): Observable<{ data: Family }> { return this.http.post<any>(`${API}/families`, formData); }
+  updateFamily(id: number, formData: FormData)           { return this.http.put<any>(`${API}/families/${id}`, formData); }
+  deleteFamily(id: number)                               { return this.http.delete<any>(`${API}/families/${id}`); }
 
   // ── Persons ───────────────────────────────────────────────────────────
   getPersons(filters?: any): Observable<{ data: Person[]; total: number }> {

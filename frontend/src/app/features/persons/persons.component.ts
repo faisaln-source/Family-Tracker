@@ -126,6 +126,7 @@ import { PersonFormModalComponent } from '../person-form-modal/person-form-modal
       <app-person-form-modal
         [person]="personToEdit"
         [families]="families"
+        [lockedFamilyId]="lockedFamilyId"
         (close)="showModal = false"
         (saved)="onModalSaved()">
       </app-person-form-modal>
@@ -139,9 +140,10 @@ export class PersonsComponent implements OnInit {
   loading = true;
   showModal = false;
   personToEdit: Person | null = null;
+  lockedFamilyId: number | null = null;
   confirmingDeleteId: number | null = null;
   deleting = false;
-  genList = Array.from({ length: 10 }, (_, i) => i + 1);
+  genList: number[] = [];
 
   filters: any = { q: '', family_id: '', generation: '', gender: '', is_alive: '' };
 
@@ -171,6 +173,14 @@ export class PersonsComponent implements OnInit {
         this.persons = res.data;
         this.total = res.total;
         this.loading = false;
+
+        // Dynamically update available generations based on current filtered data
+        // Only update if generation filter is not active, otherwise we'd lose other options
+        if (!this.filters.generation) {
+          const gens = new Set(this.persons.map(p => p.generation).filter(g => g != null));
+          this.genList = Array.from(gens).sort((a, b) => a - b);
+        }
+
         if (editId) {
           const p = this.persons.find(x => x.id === editId);
           if (p) {
@@ -189,11 +199,14 @@ export class PersonsComponent implements OnInit {
 
   openAddModal() {
     this.personToEdit = null;
+    // Lock family if a family filter is currently active
+    this.lockedFamilyId = this.filters.family_id ? +this.filters.family_id : null;
     this.showModal = true;
   }
 
   openEditModal(p: Person) {
     this.personToEdit = p;
+    this.lockedFamilyId = null; // No lock on edit — allow family reassignment
     this.showModal = true;
   }
 

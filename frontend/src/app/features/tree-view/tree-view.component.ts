@@ -18,7 +18,7 @@ import * as d3 from 'd3';
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
         <select class="form-control" style="width:200px;" [(ngModel)]="selectedFamilyId" (change)="loadTree()">
-          <option [value]="0">All Families</option>
+          <option [value]="0" disabled>Select a Family</option>
           @for (f of families; track f.id) {
             <option [value]="f.id">{{ f.family_name }}</option>
           }
@@ -35,15 +35,22 @@ import * as d3 from 'd3';
       <div class="loading-spinner"><div class="spinner"></div><span>Building tree...</span></div>
     }
 
-    @if (!loading && noData) {
+    @if (!loading && noData && selectedFamilyId !== 0) {
       <div class="empty-state">
         <span class="material-icons">account_tree</span>
         <h3>No tree data</h3>
         <p>Add family members and set parent relationships to view the tree</p>
       </div>
     }
+    @if (!loading && selectedFamilyId === 0) {
+      <div class="empty-state">
+        <span class="material-icons">family_restroom</span>
+        <h3>Select a Family</h3>
+        <p>Please select a family from the dropdown above to view its family tree.</p>
+      </div>
+    }
 
-    <div class="tree-container" [style.display]="loading || noData ? 'none' : 'block'" style="height:75vh;">
+    <div class="tree-container" [style.display]="loading || noData || selectedFamilyId === 0 ? 'none' : 'block'" style="height:75vh;">
       <div class="tree-controls">
         <button class="btn btn-icon" (click)="zoomIn()" title="Zoom In"><span class="material-icons">zoom_in</span></button>
         <button class="btn btn-icon" (click)="zoomOut()" title="Zoom Out"><span class="material-icons">zoom_out</span></button>
@@ -99,11 +106,15 @@ export class TreeViewComponent implements OnInit, AfterViewInit {
   ngAfterViewInit() {}
 
   loadTree() {
+    if (!this.selectedFamilyId) {
+      this.loading = false;
+      this.noData = false;
+      if (this.svg) this.svg.selectAll('*').remove();
+      return;
+    }
     this.loading = true;
     this.noData = false;
-    const obs = this.selectedFamilyId
-      ? this.api.getFamilyTree(+this.selectedFamilyId)
-      : this.api.getAllTrees();
+    const obs = this.api.getFamilyTree(+this.selectedFamilyId);
 
     obs.subscribe({
       next: (res) => {
