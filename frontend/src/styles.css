@@ -326,7 +326,11 @@ textarea.form-control{resize:vertical;min-height:88px}
 
 /* ── MOBILE ──────────────────── */
 @media (max-width: 768px) {
-  :root{--sidebar-w:0px}
+  :root{
+    --sidebar-w:0px;
+    --safe-top: max(env(safe-area-inset-top), 40px);
+    --safe-bottom: max(env(safe-area-inset-bottom), 16px);
+  }
 
   .mobile-menu-btn{
     display:inline-flex;
