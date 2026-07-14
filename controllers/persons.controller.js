@@ -62,10 +62,15 @@ const getPersonById = async (req, res) => {
     `, [id]);
 
     const { rows: children } = await pool.query(`
-      SELECT p.id, p.first_name, p.last_name, p.gender, p.photo_url, p.generation, p.is_alive
+      SELECT DISTINCT p.id, p.first_name, p.last_name, p.gender, p.photo_url, p.generation, p.is_alive
       FROM   relationships r
       JOIN   persons p ON p.id = r.child_id
       WHERE  r.parent_id = $1
+         OR  r.parent_id IN (
+               SELECT CASE WHEN person1_id = $1 THEN person2_id ELSE person1_id END
+               FROM marriages
+               WHERE person1_id = $1 OR person2_id = $1
+             )
       ORDER  BY p.generation, p.first_name
     `, [id]);
 

@@ -20,7 +20,11 @@ const buildDescendantsTree = async (ancestorId, globalSeenChildren = null) => {
              p.occupation, p.birthplace, p.bio, d.depth + 1, d.id
       FROM   persons p
       JOIN   relationships r ON r.child_id = p.id
-      JOIN   descendants d  ON d.id = r.parent_id
+      JOIN   descendants d ON r.parent_id = d.id OR EXISTS (
+          SELECT 1 FROM marriages m 
+          WHERE (m.person1_id = d.id AND m.person2_id = r.parent_id)
+             OR (m.person2_id = d.id AND m.person1_id = r.parent_id)
+      )
     )
     SELECT d.*, f.family_name, f.color AS family_color
     FROM   descendants d
@@ -102,19 +106,35 @@ const gatherIds = (node, set) => {
 const getFamilyTree = async (req, res) => {
   try {
     const familyId = parseInt(req.params.familyId);
-    const { rows: roots } = await pool.query(`
+
+    // Find all persons with no parent (potential roots)
+    const { rows: rootRows } = await pool.query(`
       SELECT p.id FROM persons p
       LEFT JOIN relationships r ON r.child_id = p.id
       WHERE p.family_id = $1 AND r.parent_id IS NULL
-      ORDER BY p.first_name
+      ORDER BY p.generation, p.first_name
     `, [familyId]);
+
+    const rootIds = rootRows.map(r => r.id);
+
+    // Find which of these roots are spouses of another root — exclude them
+    // to avoid duplicate trees (e.g. Jameela Beevi married to Mahmood who is also a root)
+    let spouseRootIds = new Set();
+    if (rootIds.length > 1) {
+      const { rows: marriages } = await pool.query(`
+        SELECT person1_id, person2_id FROM marriages
+        WHERE person1_id = ANY($1::int[]) AND person2_id = ANY($1::int[])
+      `, [rootIds]);
+      // For each married pair of roots, keep person1 (lower id) as the primary
+      marriages.forEach(m => spouseRootIds.add(m.person2_id));
+    }
 
     const trees = [];
     const seen = new Set();
-    
-    for (const r of roots) {
-      if (seen.has(r.id)) continue;
-      const tree = await buildDescendantsTree(r.id);
+
+    for (const id of rootIds) {
+      if (seen.has(id) || spouseRootIds.has(id)) continue;
+      const tree = await buildDescendantsTree(id);
       if (tree) {
         trees.push(tree);
         gatherIds(tree, seen);
@@ -139,21 +159,34 @@ const getAncestorTree = async (req, res) => {
   }
 };
 
-// ── GET all families trees (overview) ──────────────────────────────────────
+// ── GET all families trees (overview) ──────────────────────────────────────────
 const getAllTrees = async (req, res) => {
   try {
-    const { rows: roots } = await pool.query(`
+    const { rows: rootRows } = await pool.query(`
       SELECT p.id FROM persons p
       LEFT JOIN relationships r ON r.child_id = p.id
       WHERE r.parent_id IS NULL
       ORDER BY p.generation, p.first_name
     `);
 
+    const rootIds = rootRows.map(r => r.id);
+
+    // Exclude roots that are already spouses of another root
+    let spouseRootIds = new Set();
+    if (rootIds.length > 1) {
+      const { rows: marriages } = await pool.query(`
+        SELECT person1_id, person2_id FROM marriages
+        WHERE person1_id = ANY($1::int[]) AND person2_id = ANY($1::int[])
+      `, [rootIds]);
+      marriages.forEach(m => spouseRootIds.add(m.person2_id));
+    }
+
     const trees = [];
     const globalSeenChildren = new Set();
     
-    for (const r of roots) {
-      const tree = await buildDescendantsTree(r.id, globalSeenChildren);
+    for (const id of rootIds) {
+      if (spouseRootIds.has(id)) continue;
+      const tree = await buildDescendantsTree(id, globalSeenChildren);
       if (tree) {
         trees.push(tree);
       }
