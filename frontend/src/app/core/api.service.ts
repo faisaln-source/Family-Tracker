@@ -100,8 +100,8 @@ export class ApiService {
   getByGeneration(gen: number): Observable<any>            { return this.http.get<any>(`${API}/persons/generation/${gen}`); }
   addRelationship(parent_id: number, child_id: number)     { return this.http.post<any>(`${API}/persons/relationships`, { parent_id, child_id }); }
   addMarriage(p1: number, p2: number, married_on?: string) { return this.http.post<any>(`${API}/persons/marriages`, { person1_id: p1, person2_id: p2, married_on }); }
-  removeRelationship(parent_id: number, child_id: number)  { return this.http.delete<any>(`${API}/persons/relationships`, { body: { parent_id, child_id } }); }
-  removeMarriage(p1: number, p2: number)                   { return this.http.delete<any>(`${API}/persons/marriages`, { body: { person1_id: p1, person2_id: p2 } }); }
+  removeRelationship(parent_id: number, child_id: number)  { return this.http.delete<any>(`${API}/persons/relationships`, { params: { parent_id, child_id } }); }
+  removeMarriage(p1: number, p2: number)                   { return this.http.delete<any>(`${API}/persons/marriages`, { params: { person1_id: p1, person2_id: p2 } }); }
 
   // ── Tree ──────────────────────────────────────────────────────────────
   getStats(): Observable<{ data: Stats }>                    { return this.http.get<any>(`${API}/tree/stats`); }

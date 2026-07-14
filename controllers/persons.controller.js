@@ -309,7 +309,8 @@ const addMarriage = async (req, res) => {
 // ── REMOVE parent relationship ─────────────────────────────────────────────
 const removeRelationship = async (req, res) => {
   try {
-    const { parent_id, child_id } = req.body;
+    const { parent_id, child_id } = req.query;
+    if (!parent_id || !child_id) return res.status(400).json({ success: false, error: 'Missing parent_id or child_id' });
     const { rowCount } = await pool.query('DELETE FROM relationships WHERE parent_id = $1 AND child_id = $2', [parent_id, child_id]);
     if (rowCount === 0) return res.status(404).json({ success: false, error: 'Relationship not found' });
     
@@ -321,7 +322,8 @@ const removeRelationship = async (req, res) => {
 // ── REMOVE marriage ─────────────────────────────────────────────────────────
 const removeMarriage = async (req, res) => {
   try {
-    const { person1_id, person2_id } = req.body;
+    const { person1_id, person2_id } = req.query;
+    if (!person1_id || !person2_id) return res.status(400).json({ success: false, error: 'Missing person1_id or person2_id' });
     const p1 = Math.min(person1_id, person2_id);
     const p2 = Math.max(person1_id, person2_id);
     await pool.query('DELETE FROM marriages WHERE person1_id = $1 AND person2_id = $2', [p1, p2]);
